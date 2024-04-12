@@ -587,6 +587,7 @@ impl Default for StatusLineConfig {
             ],
             center: vec![],
             right: vec![
+                E::Zoom,
                 E::Diagnostics,
                 E::Selections,
                 E::Register,
@@ -690,6 +691,9 @@ pub enum StatusLineElement {
 
     /// The base of current working directory
     CurrentWorkingDirectory,
+
+    /// Current zoom/zen state
+    Zoom,
 }
 
 // Cursor shape is read and used on every rendered frame and so needs
