@@ -700,6 +700,7 @@ impl Default for StatusLineConfig {
             ],
             center: vec![],
             right: vec![
+                E::Zoom,
                 E::Diagnostics,
                 E::Selections,
                 E::Register,
@@ -806,6 +807,9 @@ pub enum StatusLineElement {
 
     /// Indicator for when code actions are available
     CodeActionHint,
+
+    /// Current zoom/zen state
+    Zoom,
 }
 
 // Cursor shape is read and used on every rendered frame and so needs
