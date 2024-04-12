@@ -100,3 +100,4 @@
 | `:workspace-trust` | Allow language servers and local config for the current workspace. |
 | `:workspace-untrust` | Revoke the current workspace's trust grant or exclusion. |
 | `:workspace-exclude` | Mark the current workspace as never-prompt. Never prompts for trust again. |
+| `:set-max-width` | Set the maximum width of the editor, or swap between 2 widths. If set to 0 it will take up the entire width. |

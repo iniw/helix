@@ -284,6 +284,7 @@ This layer is similar to Vim keybindings as Kakoune does not support windows.
 | `L`                    | Swap window to the right                             | `swap_view_right` |
 | `ns`, `nCtrl-s`        | New horizontal split with a scratch buffer           | `hsplit_new`      |
 | `nv`, `nCtrl-v`        | New vertical split with a scratch buffer             | `vsplit_new`      |
+| `z`                    | Toggle zoom for the focused view                     | `toggle_zoom`     |
 
 #### Space mode
 
