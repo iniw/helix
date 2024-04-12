@@ -99,3 +99,4 @@
 | `:noop` | Does nothing. |
 | `:workspace-trust` | Add current workspace to the list of trusted workspaces. |
 | `:workspace-untrust` | Remove current workspace from the list of trusted workspaces. |
+| `:set-max-width` | Set the maximum width of the editor, or swap between 2 widths. If set to 0 it will take up the entire width. |
