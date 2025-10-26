@@ -1,4 +1,4 @@
-inherits="adwaita-dark"
+inherits = "adwaita-dark"
 "attribute" = "orange_5"
 
 "type" = "teal_4"
@@ -83,7 +83,7 @@ inherits="adwaita-dark"
 "ui.help" = { fg = "dark_4", bg = "light_3" }
 "ui.text" = "dark_4"
 "ui.virtual" = "light_5"
-"ui.virtual.ruler" = { bg = "light_5"}
+"ui.virtual.ruler" = { fg = "light_5" }
 "ui.virtual.jump-label" = { fg = "light_1", bg = "dark_4" }
 "ui.menu" = { fg = "dark_4", bg = "light_3" }
 "ui.menu.selected" = { fg = "dark_4", bg = "blue_1" }
@@ -106,4 +106,4 @@ inherits="adwaita-dark"
 "diagnostic.deprecated" = { modifiers = ["crossed_out"] }
 
 "ui.bufferline" = { fg = "light_7", bg = "light_2" }
-"ui.bufferline.active" = { fg = "dark_4", bg = "light_4", modifiers = ["bold"]}
+"ui.bufferline.active" = { fg = "dark_4", bg = "light_4", modifiers = ["bold"] }
