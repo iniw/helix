@@ -1,7 +1,7 @@
 # Port of Vim's Zenburn theme (https://github.com/jnurmine/Zenburn/)
 # based on theli-ua's Helix port (https://github.com/theli-ua/helix/tree/zenburn)
 # Author: Jakob Jordan <jakobjordan(at)posteo.de>
-# License: GNU GPL <http://www.gnu.org/licenses/gpl.html> 
+# License: GNU GPL <http://www.gnu.org/licenses/gpl.html>
 
 # "attribute"
 "type" = "zb-type-fg"
@@ -135,7 +135,7 @@
 "ui.text.focus" = { modifiers = ["bold"] }
 # "ui.text.inactive"
 "ui.text.info" = { fg = "zb-pmenu-fg", bg = "zb-pmenu-bg" }
-"ui.virtual.ruler" = { bg = "zb-colorcolumn-bg" }
+"ui.virtual.ruler" = { fg = "zb-colorcolumn-bg" }
 "ui.virtual.whitespace" = { fg = "zb-nontext-fg", modifiers = ["bold"] }
 "ui.virtual.indent-guide" = { fg = "zb-colorcolumn-bg" }
 # "ui.virtual.inlay-hint"
