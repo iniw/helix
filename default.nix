@@ -57,7 +57,7 @@ rustPlatform.buildRustPackage (self: {
     git
   ];
 
-  buildType = "release";
+  buildType = "opt";
 
   name = with builtins; (fromTOML (readFile ./helix-term/Cargo.toml)).package.name;
   src = fs.toSource {
