@@ -79,7 +79,7 @@ impl Config {
                     (None, Some(val)) | (Some(val), None) => {
                         val.try_into().map_err(ConfigLoadError::BadConfig)?
                     }
-                    (Some(global), Some(local)) => merge_toml_values(global, local, 3)
+                    (Some(global), Some(local)) => merge_toml_values(global, local, 10)
                         .try_into()
                         .map_err(ConfigLoadError::BadConfig)?,
                 };
