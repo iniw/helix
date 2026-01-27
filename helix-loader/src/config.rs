@@ -9,6 +9,30 @@ pub fn default_lang_config() -> toml::Value {
         .expect("Could not parse built-in languages.toml to valid toml")
 }
 
+fn merge_lang_config_values(left: toml::Value, mut right: toml::Value) -> toml::Value {
+    if let (Some(left_servers), Some(right_servers)) = (
+        left.get("language-server").and_then(toml::Value::as_table),
+        right
+            .get_mut("language-server")
+            .and_then(toml::Value::as_table_mut),
+    ) {
+        for (name, right_server) in right_servers {
+            let Some(left_config) = left_servers
+                .get(name)
+                .and_then(|server| server.get("config"))
+            else {
+                continue;
+            };
+            let Some(right_config) = right_server.get_mut("config") else {
+                continue;
+            };
+            *right_config = crate::merge_toml_values(left_config.clone(), right_config.clone(), 10);
+        }
+    }
+
+    crate::merge_toml_values(left, right, 3)
+}
+
 /// User configured languages.toml file, merged with the default config.
 ///
 /// Workspace-local `.helix/languages.toml` is merged in only when the current
@@ -32,11 +56,78 @@ pub fn user_lang_config(trust: &WorkspaceTrust) -> Result<toml::Value, toml::de:
         })
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
-        .fold(default_lang_config(), |a, b| {
-            crate::merge_toml_values(a, b, 3)
-        });
+        .fold(default_lang_config(), merge_lang_config_values);
 
     Ok(config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::merge_lang_config_values;
+
+    #[test]
+    fn language_server_config_merges_deeply_without_merging_language_server_lists() {
+        let default = toml::from_str(
+            r#"
+            [language-server.example]
+            command = "example"
+            args = ["default"]
+
+            [language-server.example.config]
+            inherited = true
+
+            [language-server.example.config.nested]
+            inherited = true
+            overridden = "default"
+
+            [[language]]
+            name = "json"
+            scope = "source.json"
+            language-servers = ["default"]
+            "#,
+        )
+        .unwrap();
+        let user = toml::from_str(
+            r#"
+            [language-server.example]
+            args = ["user"]
+
+            [language-server.example.config]
+            added = true
+
+            [language-server.example.config.nested]
+            overridden = "user"
+
+            [[language]]
+            name = "json"
+            language-servers = ["user"]
+            "#,
+        )
+        .unwrap();
+        let expected = toml::from_str(
+            r#"
+            [language-server.example]
+            command = "example"
+            args = ["user"]
+
+            [language-server.example.config]
+            inherited = true
+            added = true
+
+            [language-server.example.config.nested]
+            inherited = true
+            overridden = "user"
+
+            [[language]]
+            name = "json"
+            scope = "source.json"
+            language-servers = ["user"]
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(merge_lang_config_values(default, user), expected);
+    }
 }
 
 /// Default built-in auto-pairs.toml.
