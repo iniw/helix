@@ -1421,6 +1421,7 @@ impl EditorView {
                         config.mouse_yank_register,
                         commands::Paste::Before,
                         cxt.count(),
+                        commands::PasteType::Default,
                     );
 
                     return EventResult::Consumed(None);
