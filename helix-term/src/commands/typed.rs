@@ -1188,7 +1188,7 @@ fn paste_clipboard_after(
         return Ok(());
     }
 
-    paste(cx.editor, '+', Paste::After, 1);
+    paste(cx.editor, '+', Paste::After, 1, PasteType::Default);
     Ok(())
 }
 
@@ -1201,7 +1201,7 @@ fn paste_clipboard_before(
         return Ok(());
     }
 
-    paste(cx.editor, '+', Paste::Before, 1);
+    paste(cx.editor, '+', Paste::Before, 1, PasteType::Default);
     Ok(())
 }
 
@@ -1214,7 +1214,7 @@ fn paste_primary_clipboard_after(
         return Ok(());
     }
 
-    paste(cx.editor, '*', Paste::After, 1);
+    paste(cx.editor, '*', Paste::After, 1, PasteType::Default);
     Ok(())
 }
 
@@ -1227,7 +1227,7 @@ fn paste_primary_clipboard_before(
         return Ok(());
     }
 
-    paste(cx.editor, '*', Paste::Before, 1);
+    paste(cx.editor, '*', Paste::Before, 1, PasteType::Default);
     Ok(())
 }
 
