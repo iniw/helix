@@ -400,7 +400,7 @@ fn write_impl(
     // Save an undo checkpoint for any outstanding changes.
     doc.append_changes_to_history(view);
 
-    let fmt = if config.auto_format && options.auto_format {
+    let fmt = if options.auto_format {
         let path = path.map(Into::into);
         let write = Some((path.clone(), options.force));
         let callback: job::Callback = Callback::Followup(Box::new(move |editor| {
@@ -882,7 +882,7 @@ pub fn write_all_impl(
         // Save an undo checkpoint for any outstanding changes.
         doc.append_changes_to_history(view);
 
-        let fmt = if config.auto_format && options.auto_format {
+        let fmt = if options.auto_format {
             let path = doc.path().map(Into::into);
             let write = Some((path.clone(), options.force));
             let callback: job::Callback = Callback::Followup(Box::new(move |editor| {
