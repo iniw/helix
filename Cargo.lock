@@ -1630,6 +1630,7 @@ dependencies = [
  "helix-stdx",
  "imara-diff 0.2.0",
  "log",
+ "memchr",
  "parking_lot",
  "tempfile",
  "tokio",

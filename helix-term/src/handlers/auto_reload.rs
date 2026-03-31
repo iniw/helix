@@ -187,7 +187,7 @@ fn handle_document_change(
         }
     } else {
         let view = view_mut!(editor, target_view_id);
-        match doc.reload(view, &editor.diff_providers) {
+        match doc.reload(view, &mut editor.diff_providers) {
             Ok(_) => {
                 view.ensure_cursor_in_view(doc, scrolloff);
                 let msg = format!(
@@ -237,7 +237,7 @@ fn prompt_reload_modified(compositor: &mut Compositor, doc_id: DocumentId, path_
                     let target_view_id = cx.editor.get_synced_view_id(doc_id);
                     let doc = doc_mut!(cx.editor, &doc_id);
                     let view = view_mut!(cx.editor, target_view_id);
-                    match doc.reload(view, &cx.editor.diff_providers) {
+                    match doc.reload(view, &mut cx.editor.diff_providers) {
                         Ok(_) => {
                             view.ensure_cursor_in_view(doc, scrolloff);
                             cx.editor.set_status(format!("{path_str} reloaded"));
