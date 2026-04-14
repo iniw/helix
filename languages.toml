@@ -1157,7 +1157,7 @@ formatter = { command = "nixfmt" }
 
 [[grammar]]
 name = "nix"
-source = { git = "https://github.com/nix-community/tree-sitter-nix", rev = "1b69cf1fa92366eefbe6863c184e5d2ece5f187d" }
+source = { git = "https://github.com/molybdenumsoftware/tree-sitter-nix", rev = "c00ff805e7071b8c53369172e76c86bad2f55f5f" }
 
 [[language]]
 name = "ruby"
