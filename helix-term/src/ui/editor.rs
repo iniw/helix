@@ -87,7 +87,7 @@ impl EditorView {
         let inner = view.inner_area(doc);
         let area = view.area;
         let theme = &editor.theme;
-        let config = editor.config();
+        let editor_config = editor.config();
         let loader = editor.syn_loader.load();
 
         let view_offset = doc.view_offset(view.id);
@@ -95,11 +95,11 @@ impl EditorView {
         let text_annotations = view.text_annotations(doc, Some(theme));
         let mut decorations = DecorationManager::default();
 
-        if is_focused && config.cursorline {
+        if is_focused && editor_config.cursorline {
             decorations.add_decoration(Self::cursorline(doc, view, theme));
         }
 
-        if is_focused && config.cursorcolumn {
+        if is_focused && editor_config.cursorcolumn {
             Self::highlight_cursorcolumn(doc, view, surface, theme, inner, &text_annotations);
         }
 
@@ -131,7 +131,7 @@ impl EditorView {
         if doc
             .language_config()
             .and_then(|config| config.rainbow_brackets)
-            .unwrap_or(config.rainbow_brackets)
+            .unwrap_or(editor_config.rainbow_brackets)
         {
             if let Some(overlay) =
                 Self::doc_rainbow_highlights(doc, view_offset.anchor, inner.height, theme, &loader)
@@ -147,7 +147,7 @@ impl EditorView {
         Self::doc_diagnostics_highlights_into(doc, theme, &mut overlays);
 
         if is_focused {
-            if config.lsp.auto_document_highlight {
+            if editor_config.lsp.auto_document_highlight {
                 if let Some(overlay) = Self::doc_document_highlights(doc, view, theme) {
                     overlays.push(overlay);
                 }
@@ -160,7 +160,7 @@ impl EditorView {
                 doc,
                 view,
                 theme,
-                &config.cursor_shape,
+                &editor_config.cursor_shape,
                 self.terminal_focused,
             ));
             if let Some(overlay) = Self::highlight_focused_view_elements(view, doc, theme) {
@@ -193,21 +193,22 @@ impl EditorView {
                 primary_cursor,
             });
         }
-        let config = doc.config.load();
+        let doc_config = doc.config.load();
 
-        if config.enable_diagnostics {
+        if doc_config.enable_diagnostics {
             let width = view.inner_width(doc);
             let enable_cursor_line = view
                 .diagnostics_handler
                 .show_cursorline_diagnostics(doc, view.id);
-            let inline_diagnostic_config =
-                config.inline_diagnostics.prepare(width, enable_cursor_line);
+            let inline_diagnostic_config = doc_config
+                .inline_diagnostics
+                .prepare(width, enable_cursor_line);
             decorations.add_decoration(InlineDiagnostics::new(
                 doc,
                 theme,
                 primary_cursor,
                 inline_diagnostic_config,
-                config.end_of_line_diagnostics,
+                doc_config.end_of_line_diagnostics,
             ));
         }
 
@@ -235,17 +236,21 @@ impl EditorView {
             }
         }
 
-        if config.enable_diagnostics
-            && config.inline_diagnostics.disabled()
-            && config.end_of_line_diagnostics == DiagnosticFilter::Disable
+        if doc_config.enable_diagnostics
+            && doc_config.inline_diagnostics.disabled()
+            && doc_config.end_of_line_diagnostics == DiagnosticFilter::Disable
         {
             Self::render_diagnostics(doc, view, inner, surface, theme);
+        }
+
+        if doc_config.breadcrumb.enable && view.area.height > 1 {
+            Self::render_breadcrumb(editor, doc, view, view.area.with_height(1), surface);
         }
 
         let statusline_area = view
             .area
             .clip_top(view.area.height.saturating_sub(1))
-            .clip_bottom(config.commandline as u16); // -1 from bottom to remove commandline
+            .clip_bottom(editor_config.commandline as u16); // -1 from bottom to remove commandline
 
         let mut context =
             statusline::RenderContext::new(editor, doc, view, is_focused, &self.spinners);
@@ -721,7 +726,13 @@ impl EditorView {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub fn render_breadcrumb(editor: &Editor, viewport: Rect, surface: &mut Surface) {
+    pub fn render_breadcrumb(
+        editor: &Editor,
+        doc: &Document,
+        view: &View,
+        viewport: Rect,
+        surface: &mut Surface,
+    ) {
         use helix_view::editor::BreadcrumbPathOptions::{File, Full};
 
         #[must_use]
@@ -738,12 +749,10 @@ impl EditorView {
                 .0
         }
 
-        let (view, _) = current_ref!(editor);
-        let Some(doc) = editor.document(view.doc) else {
+        let config = doc.config.load();
+        if !config.breadcrumb.enable {
             return;
-        };
-
-        let config = editor.config();
+        }
 
         let style = editor
             .theme
@@ -752,7 +761,7 @@ impl EditorView {
 
         surface.clear_with(viewport, style);
 
-        let mut x = viewport.x;
+        let mut x = viewport.x.saturating_add(1);
 
         let separator = " > ";
         let separator_style = editor.theme.get("ui.breadcrumb.separator");
@@ -1759,9 +1768,7 @@ impl Component for EditorView {
             _ => false,
         };
 
-        let render_breadcrumb = config.breadcrumb.enable;
-
-        let mut editor_area = if use_bufferline {
+        let editor_area = if use_bufferline {
             // -1 for bufferline
             area.clip_top(1)
         } else {
@@ -1769,25 +1776,11 @@ impl Component for EditorView {
         }
         .clip_bottom(config.commandline as u16); // -1 for commandline
 
-        if render_breadcrumb {
-            editor_area = editor_area.clip_top(1);
-        }
-
         // if the terminal size suddenly changed, we need to trigger a resize
         cx.editor.resize(editor_area);
 
         if use_bufferline {
             Self::render_bufferline(cx.editor, area.with_height(1), surface);
-        }
-
-        if render_breadcrumb {
-            let area = area
-                .with_height(1)
-                // Position it at y=1 if bufferline is used, otherwise y=0
-                .with_y(if use_bufferline { area.y + 1 } else { area.y })
-                // Adds padding to the start of the breadcrumb.
-                .clip_left(1);
-            Self::render_breadcrumb(cx.editor, area, surface);
         }
 
         for (view, is_focused) in cx.editor.tree.views() {

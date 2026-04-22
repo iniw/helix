@@ -44,10 +44,13 @@ fn request_document_symbols(editor: &mut Editor, doc_id: DocumentId) {
                 match response {
                     DocumentSymbolResponse::Nested(symbols) => {
                         doc.set_document_symbols(symbols, offset_encoding);
+                        doc.update_breadcrumbs();
                     }
                     // TODO: Using the `Location`, it should be possible to map cursor
                     // to a hierarchical tree?
-                    DocumentSymbolResponse::Flat(_) => {}
+                    DocumentSymbolResponse::Flat(_) => {
+                        doc.clear_document_symbols();
+                    }
                 }
             }
         })
@@ -58,11 +61,7 @@ fn request_document_symbols(editor: &mut Editor, doc_id: DocumentId) {
 pub(super) fn register_hooks(_handlers: &Handlers) {
     register_hook!(move |event: &mut DocumentDidOpen<'_>| {
         let doc_id = event.doc;
-        let view_id = event.editor.tree.focus;
         request_document_symbols(event.editor, doc_id);
-        if let Some(doc) = event.editor.document_mut(doc_id) {
-            doc.update_breadcrumbs_for_view(view_id);
-        }
         Ok(())
     });
 
@@ -70,12 +69,11 @@ pub(super) fn register_hooks(_handlers: &Handlers) {
         if !event.ghost_transaction {
             // Cancel the ongoing request, if present.
             event.doc.symbols_controller.cancel();
-            let view_id = event.view;
             let doc_id = event.doc.id();
             job::dispatch_blocking(move |editor, _| {
                 request_document_symbols(editor, doc_id);
                 if let Some(doc) = editor.document_mut(doc_id) {
-                    doc.update_breadcrumbs_for_view(view_id);
+                    doc.update_breadcrumbs();
                 }
             });
         }
@@ -83,13 +81,14 @@ pub(super) fn register_hooks(_handlers: &Handlers) {
     });
 
     register_hook!(move |event: &mut LanguageServerInitialized<'_>| {
-        let view_id = event.editor.tree.focus;
-        if let Some(view) = event.editor.tree.try_get(view_id) {
-            let doc_id = view.doc;
+        for doc_id in event
+            .editor
+            .tree
+            .views()
+            .map(|(view, _)| view.doc)
+            .collect::<Vec<_>>()
+        {
             request_document_symbols(event.editor, doc_id);
-            if let Some(doc) = event.editor.document_mut(doc_id) {
-                doc.update_breadcrumbs_for_view(view_id);
-            }
         }
         Ok(())
     });
@@ -105,13 +104,14 @@ pub(super) fn register_hooks(_handlers: &Handlers) {
 
     register_hook!(move |event: &mut ConfigDidChange<'_>| {
         if !event.old.breadcrumb.enable && event.new.breadcrumb.enable {
-            let view_id = event.editor.tree.focus;
-            if let Some(view) = event.editor.tree.try_get(view_id) {
-                let doc_id = view.doc;
+            for doc_id in event
+                .editor
+                .tree
+                .views()
+                .map(|(view, _)| view.doc)
+                .collect::<Vec<_>>()
+            {
                 request_document_symbols(event.editor, doc_id);
-                if let Some(doc) = event.editor.document_mut(doc_id) {
-                    doc.update_breadcrumbs_for_view(view_id);
-                }
             }
             return Ok(());
         }
@@ -126,14 +126,8 @@ pub(super) fn register_hooks(_handlers: &Handlers) {
     });
 
     register_hook!(move |event: &mut SelectionDidChange<'_>| {
-        let doc_id = event.doc.id();
         let view_id = event.view;
-
-        job::dispatch_blocking(move |editor, _| {
-            if let Some(doc) = editor.document_mut(doc_id) {
-                doc.update_breadcrumbs_for_view_inlined(view_id);
-            }
-        });
+        event.doc.update_breadcrumbs_for_view_inlined(view_id);
         Ok(())
     });
 }

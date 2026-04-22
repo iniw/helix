@@ -1160,7 +1160,7 @@ fn goto_window(cx: &mut Context, align: Align) {
     let (view, doc) = current!(cx.editor);
     let view_offset = doc.view_offset(view.id);
 
-    let height = view.inner_height();
+    let height = view.inner_height(doc);
 
     // respect user given count if any
     // - 1 so we have at least one gap in the middle.
@@ -1951,7 +1951,7 @@ pub fn scroll(cx: &mut Context, offset: usize, direction: Direction, sync_cursor
     let text = doc.text().slice(..);
 
     let cursor = range.cursor(text);
-    let height = view.inner_height();
+    let height = view.inner_height(doc);
 
     let scrolloff = config.scrolloff.min(height.saturating_sub(1) / 2);
     let offset = match direction {
@@ -2053,49 +2053,57 @@ pub fn scroll(cx: &mut Context, offset: usize, direction: Direction, sync_cursor
 
 fn page_up(cx: &mut Context) {
     let view = view!(cx.editor);
-    let offset = view.inner_height();
+    let doc = doc!(cx.editor);
+    let offset = view.inner_height(doc);
     scroll(cx, offset, Direction::Backward, false);
 }
 
 fn page_down(cx: &mut Context) {
     let view = view!(cx.editor);
-    let offset = view.inner_height();
+    let doc = doc!(cx.editor);
+    let offset = view.inner_height(doc);
     scroll(cx, offset, Direction::Forward, false);
 }
 
 fn half_page_up(cx: &mut Context) {
     let view = view!(cx.editor);
-    let offset = view.inner_height() / 2;
+    let doc = doc!(cx.editor);
+    let offset = view.inner_height(doc) / 2;
     scroll(cx, offset, Direction::Backward, false);
 }
 
 fn half_page_down(cx: &mut Context) {
     let view = view!(cx.editor);
-    let offset = view.inner_height() / 2;
+    let doc = doc!(cx.editor);
+    let offset = view.inner_height(doc) / 2;
     scroll(cx, offset, Direction::Forward, false);
 }
 
 fn page_cursor_up(cx: &mut Context) {
     let view = view!(cx.editor);
-    let offset = view.inner_height();
+    let doc = doc!(cx.editor);
+    let offset = view.inner_height(doc);
     scroll(cx, offset, Direction::Backward, true);
 }
 
 fn page_cursor_down(cx: &mut Context) {
     let view = view!(cx.editor);
-    let offset = view.inner_height();
+    let doc = doc!(cx.editor);
+    let offset = view.inner_height(doc);
     scroll(cx, offset, Direction::Forward, true);
 }
 
 fn page_cursor_half_up(cx: &mut Context) {
     let view = view!(cx.editor);
-    let offset = view.inner_height() / 2;
+    let doc = doc!(cx.editor);
+    let offset = view.inner_height(doc) / 2;
     scroll(cx, offset, Direction::Backward, true);
 }
 
 fn page_cursor_half_down(cx: &mut Context) {
     let view = view!(cx.editor);
-    let offset = view.inner_height() / 2;
+    let doc = doc!(cx.editor);
+    let offset = view.inner_height(doc) / 2;
     scroll(cx, offset, Direction::Forward, true);
 }
 
@@ -2786,9 +2794,10 @@ fn global_search_impl(cx: &mut Context, fuzzy: bool) {
                 Span::styled((item.line_num + 1).to_string(), config.number_style),
             ]))
         }),
-        PickerColumn::new("contents", |item: &FileResult, _config: &GlobalSearchConfig| {
-            Cell::from(item.content.as_str())
-        }),
+        PickerColumn::new(
+            "contents",
+            |item: &FileResult, _config: &GlobalSearchConfig| Cell::from(item.content.as_str()),
+        ),
     ];
 
     let get_files = |query: &str,
@@ -2821,10 +2830,7 @@ fn global_search_impl(cx: &mut Context, fuzzy: bool) {
                     Some(matcher)
                 }
                 Err(err) => {
-                    log::info!(
-                        "Failed to compile search pattern in global search: {}",
-                        err
-                    );
+                    log::info!("Failed to compile search pattern in global search: {}", err);
                     return async { Err(anyhow::anyhow!("Failed to compile regex")) }.boxed();
                 }
             }
@@ -3016,11 +3022,7 @@ fn global_search_impl(cx: &mut Context, fuzzy: bool) {
         let mut ranges = Vec::new();
 
         if search_fuzzy {
-            let pattern = NucleoPattern::parse(
-                query,
-                CaseMatching::Smart,
-                Normalization::Smart,
-            );
+            let pattern = NucleoPattern::parse(query, CaseMatching::Smart, Normalization::Smart);
             let mut matcher = MATCHER.lock();
             matcher.config = nucleo::Config::DEFAULT;
             let mut buf = Vec::new();
@@ -3035,7 +3037,10 @@ fn global_search_impl(cx: &mut Context, fuzzy: bool) {
 
                 indices.clear();
                 let haystack = Utf32Str::new(&line_text, &mut buf);
-                if pattern.indices(haystack, &mut matcher, &mut indices).is_some() {
+                if pattern
+                    .indices(haystack, &mut matcher, &mut indices)
+                    .is_some()
+                {
                     indices.sort_unstable();
                     indices.dedup();
                     for &idx in &indices {

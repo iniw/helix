@@ -1530,6 +1530,10 @@ impl Document {
         }
 
         self.view_data_mut(view_id);
+
+        if self.config.load().breadcrumb.enable {
+            self.update_breadcrumbs_for_view(view_id);
+        }
     }
 
     /// Mark document as recent used for MRU sorting
@@ -2506,6 +2510,13 @@ impl Document {
     #[inline]
     pub fn clear_breadcrumbs(&mut self) {
         self.breadcrumbs.clear();
+    }
+
+    #[inline]
+    pub fn update_breadcrumbs(&mut self) {
+        for view_id in self.selections.keys().copied().collect::<Vec<_>>() {
+            self.update_breadcrumbs_for_view(view_id);
+        }
     }
 
     // For all non-hotpaths, we use this function to prevent code bloat.
