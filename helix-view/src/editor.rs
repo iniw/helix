@@ -774,6 +774,7 @@ impl Default for StatusLineConfig {
             ],
             center: vec![],
             right: vec![
+                E::WorkspaceDiagnostics,
                 E::SearchPosition,
                 E::Zoom,
                 E::Diagnostics,
