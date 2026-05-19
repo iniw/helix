@@ -187,7 +187,7 @@ fn handle_document_change(
         }
     } else {
         let view = view_mut!(editor, target_view_id);
-        match doc.reload(view, &editor.diff_providers) {
+        match doc.reload(view, &editor.diff_providers, &editor.workspace_trust) {
             Ok(_) => {
                 view.ensure_cursor_in_view(doc, scrolloff);
                 let msg = format!(
@@ -214,7 +214,10 @@ fn reload_vcs_diffs(editor: &mut Editor) {
         let Some(path) = doc.path() else {
             continue;
         };
-        match editor.diff_providers.get_diff_base(path) {
+        match editor
+            .diff_providers
+            .get_diff_base(path, &editor.workspace_trust)
+        {
             Some(diff_base) => doc.set_diff_base(diff_base),
             None => doc.diff_handle = None,
         }
@@ -237,7 +240,7 @@ fn prompt_reload_modified(compositor: &mut Compositor, doc_id: DocumentId, path_
                     let target_view_id = cx.editor.get_synced_view_id(doc_id);
                     let doc = doc_mut!(cx.editor, &doc_id);
                     let view = view_mut!(cx.editor, target_view_id);
-                    match doc.reload(view, &cx.editor.diff_providers) {
+                    match doc.reload(view, &cx.editor.diff_providers, &cx.editor.workspace_trust) {
                         Ok(_) => {
                             view.ensure_cursor_in_view(doc, scrolloff);
                             cx.editor.set_status(format!("{path_str} reloaded"));

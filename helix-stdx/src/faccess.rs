@@ -1,4 +1,4 @@
-//! Functions for managine file metadata.
+//! Functions for managing file metadata.
 //! From <https://github.com/Freaky/faccess>
 
 use std::io;
@@ -25,7 +25,10 @@ bitflags! {
 mod imp {
     use super::*;
 
-    use rustix::fs::Access;
+    use rustix::{
+        fs::Access,
+        process::{getegid, geteuid},
+    };
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
     pub fn access(p: &Path, mode: AccessMode) -> io::Result<()> {
@@ -93,6 +96,22 @@ mod imp {
         std::fs::set_permissions(to, perms)?;
 
         Ok(())
+    }
+
+    pub fn write_sensitive_file(path: &Path, contents: &[u8]) -> io::Result<()> {
+        use std::io::Write;
+        let uid = geteuid();
+        let gid = getegid();
+        let mut f = std::fs::File::create(path)?;
+
+        // `rustix` version is used instead of one defined above
+        // to avoid converting `uid` and `gid` to u32
+        // and then back to `Uid` and `Gid`.
+        _ = rustix::fs::chown(path, Some(uid), Some(gid));
+        let mut p = f.metadata()?.permissions();
+        p.set_mode(0o0640);
+        _ = std::fs::set_permissions(path, p);
+        f.write_all(contents)
     }
 
     pub fn hardlink_count(p: &Path) -> std::io::Result<u64> {
@@ -503,6 +522,19 @@ pub fn readonly(p: &Path) -> bool {
 
 pub fn copy_metadata(from: &Path, to: &Path) -> io::Result<()> {
     imp::copy_metadata(from, to)
+}
+
+/// Write file while trying to set sensible mode, owner and group.
+///
+/// On non-unix systems, this is nothing more than a `std::fs::write`.
+pub fn write_sensitive_file<P: AsRef<Path>, C: AsRef<[u8]>>(
+    path: P,
+    contents: C,
+) -> io::Result<()> {
+    #[cfg(unix)]
+    return imp::write_sensitive_file(path.as_ref(), contents.as_ref());
+    #[cfg(not(unix))]
+    return std::fs::write(path.as_ref(), contents.as_ref());
 }
 
 pub fn hardlink_count(p: &Path) -> io::Result<u64> {

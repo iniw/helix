@@ -15,7 +15,7 @@ use crate::{
     Document, DocumentId, View, ViewId,
 };
 use helix_event::dispatch;
-use helix_loader::workspace_trust::TrustStatus;
+use helix_loader::workspace_trust::{ImplicitTrustLevel, TrustStatus, WorkspaceTrust};
 use helix_vcs::DiffProviderRegistry;
 
 use futures_util::stream::select_all::SelectAll;
@@ -441,7 +441,7 @@ pub struct Config {
     pub kitty_keyboard_protocol: KittyKeyboardProtocolConfig,
     pub buffer_picker: BufferPickerConfig,
     /// Whether to implicitly trust every workspace or not
-    pub insecure: bool,
+    pub workspace_trust: WorkspaceTrustConfig,
     pub auto_reload: AutoReloadConfig,
     pub file_watcher: file_watcher::Config,
 }
@@ -496,6 +496,52 @@ pub enum KittyKeyboardProtocolConfig {
     Auto,
     Disabled,
     Enabled,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize, Clone)]
+#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
+pub struct WorkspaceTrustConfig {
+    pub level: ImplicitTrustLevelConfigWrapper,
+    pub selector: bool,
+    pub globs: Vec<String>,
+}
+
+impl Default for WorkspaceTrustConfig {
+    fn default() -> Self {
+        Self {
+            level: Default::default(),
+            selector: true,
+            globs: Default::default(),
+        }
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize, Clone, Copy)]
+#[serde(rename_all = "kebab-case")]
+pub enum ImplicitTrustLevelConfigWrapper {
+    #[default]
+    None,
+    Lsp,
+    All,
+}
+
+impl From<ImplicitTrustLevelConfigWrapper> for ImplicitTrustLevel {
+    fn from(value: ImplicitTrustLevelConfigWrapper) -> Self {
+        match value {
+            ImplicitTrustLevelConfigWrapper::None => ImplicitTrustLevel::None,
+            ImplicitTrustLevelConfigWrapper::Lsp => ImplicitTrustLevel::Lsp,
+            ImplicitTrustLevelConfigWrapper::All => ImplicitTrustLevel::All,
+        }
+    }
+}
+
+impl From<WorkspaceTrustConfig> for helix_loader::workspace_trust::Config {
+    fn from(value: WorkspaceTrustConfig) -> Self {
+        Self {
+            trust_level: value.level.into(),
+            globs: value.globs,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, PartialOrd, Ord)]
@@ -1243,7 +1289,7 @@ impl Default for Config {
             rainbow_brackets: false,
             kitty_keyboard_protocol: Default::default(),
             buffer_picker: BufferPickerConfig::default(),
-            insecure: false,
+            workspace_trust: WorkspaceTrustConfig::default(),
             file_watcher: file_watcher::Config::default(),
             auto_reload: AutoReloadConfig::default(),
         }
@@ -1350,6 +1396,7 @@ pub struct Editor {
     pub mouse_down_range: Option<Range>,
     pub cursor_cache: CursorCache,
     pub file_watcher: Watcher,
+    pub workspace_trust: WorkspaceTrust,
 }
 
 pub type Motion = Box<dyn Fn(&mut Editor)>;
@@ -1423,6 +1470,7 @@ impl Editor {
         syn_loader: Arc<ArcSwap<syntax::Loader>>,
         config: Arc<dyn DynAccess<Config>>,
         handlers: Handlers,
+        workspace_trust: WorkspaceTrust,
     ) -> Self {
         let language_servers = helix_lsp::Registry::new(syn_loader.clone());
         let conf = config.load();
@@ -1434,7 +1482,7 @@ impl Editor {
 
         // Set up extra watched paths from VCS providers (e.g., external HEAD files for worktrees)
         let (workspace, _) = helix_loader::find_workspace();
-        let extra_paths = diff_providers.get_watched_paths(&workspace);
+        let extra_paths = diff_providers.get_watched_paths(&workspace, &workspace_trust);
         file_watcher.set_extra_watched_paths(extra_paths);
 
         // HAXX: offset the render area height by 1 to account for prompt/commandline
@@ -1483,6 +1531,7 @@ impl Editor {
             cursor_cache: CursorCache::default(),
             dir_stack: VecDeque::with_capacity(DIR_STACK_CAP),
             file_watcher,
+            workspace_trust,
         }
     }
 
@@ -1852,12 +1901,11 @@ impl Editor {
         let config = doc.config.load();
         let root_dirs = &config.workspace_lsp_roots;
 
-        if let TrustStatus::Untrusted =
-            helix_loader::workspace_trust::quick_query_workspace(self.config.load().insecure)
+        if TrustStatus::Untrusted
+            == self
+                .workspace_trust
+                .query_status(helix_loader::workspace_trust::TrustType::Lsp)
         {
-            self.set_status(
-                "Current workspace is not trusted. Run `:workspace-trust` to enable all features.",
-            );
             return;
         };
 
@@ -2145,10 +2193,16 @@ impl Editor {
                 Editor::doc_diagnostics(&self.language_servers, &self.diagnostics, &doc);
             doc.replace_diagnostics(diagnostics, &[], None);
 
-            if let Some(diff_base) = self.diff_providers.get_diff_base(&path) {
+            if let Some(diff_base) = self
+                .diff_providers
+                .get_diff_base(&path, &self.workspace_trust)
+            {
                 doc.set_diff_base(diff_base);
             }
-            doc.set_version_control_head(self.diff_providers.get_current_head_name(&path));
+            doc.set_version_control_head(
+                self.diff_providers
+                    .get_current_head_name(&path, &self.workspace_trust),
+            );
 
             let id = self.new_document(doc);
             self.launch_language_servers(id);

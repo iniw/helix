@@ -1,4 +1,5 @@
 use anyhow::{Context, Error, Result};
+use helix_loader::workspace_trust::WorkspaceTrust;
 use helix_loader::VERSION_AND_GIT_HASH;
 use helix_term::application::Application;
 use helix_term::args::Args;
@@ -130,10 +131,16 @@ FLAGS:
         return Ok(1);
     }
 
-    let config = match Config::load_default() {
+    let default_config = {
+        let config = Config::default();
+        let workspace_trust = WorkspaceTrust::new(config.editor.workspace_trust.clone().into());
+        (config, workspace_trust)
+    };
+
+    let (config, workspace_trust) = match Config::load_default(None) {
         Ok(config) => config,
         Err(ConfigLoadError::Error(err)) if err.kind() == std::io::ErrorKind::NotFound => {
-            Config::default()
+            default_config
         }
         Err(ConfigLoadError::Error(err)) => return Err(Error::new(err)),
         Err(ConfigLoadError::BadConfig(err)) => {
@@ -141,12 +148,12 @@ FLAGS:
             eprintln!("Press <ENTER> to continue with default config");
             use std::io::Read;
             let _ = std::io::stdin().read(&mut []);
-            Config::default()
+            default_config
         }
     };
 
     let lang_loader =
-        helix_core::config::user_lang_loader(config.editor.insecure).unwrap_or_else(|err| {
+        helix_core::config::user_lang_loader(&workspace_trust).unwrap_or_else(|err| {
             eprintln!("{}", err);
             eprintln!("Press <ENTER> to continue with default language config");
             use std::io::Read;
@@ -156,7 +163,8 @@ FLAGS:
         });
 
     // TODO: use the thread local executor to spawn the application task separately from the work pool
-    let mut app = Application::new(args, config, lang_loader).context("unable to start Helix")?;
+    let mut app = Application::new(args, config, lang_loader, workspace_trust)
+        .context("unable to start Helix")?;
     let mut events = app.event_stream();
 
     let exit_code = app.run(&mut events).await?;

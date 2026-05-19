@@ -1,6 +1,7 @@
 use arc_swap::{access::Map, ArcSwap};
 use futures_util::Stream;
 use helix_core::{diagnostic::Severity, pos_at_coords, syntax, Range, Selection};
+use helix_loader::workspace_trust::WorkspaceTrust;
 use helix_lsp::{
     lsp::{self, notification::Notification},
     util::lsp_range_to_range,
@@ -104,7 +105,12 @@ fn setup_integration_logging() {
 }
 
 impl Application {
-    pub fn new(args: Args, config: Config, lang_loader: syntax::Loader) -> Result<Self, Error> {
+    pub fn new(
+        args: Args,
+        config: Config,
+        lang_loader: syntax::Loader,
+        workspace_trust: WorkspaceTrust,
+    ) -> Result<Self, Error> {
         #[cfg(feature = "integration")]
         setup_integration_logging();
 
@@ -137,6 +143,7 @@ impl Application {
                 &config.editor
             })),
             handlers,
+            workspace_trust,
         );
         Self::load_configured_theme(&mut editor, &config.load(), &mut terminal, theme_mode);
 
@@ -219,7 +226,13 @@ impl Application {
                     editor.new_file(Action::VerticalSplit);
                 } else {
                     editor.set_status(format!(
-                        "Loaded {} file{}.",
+                        "{}Loaded {} file{}.",
+                        // Append new status to the previous one, if there is one.
+                        if let Some((prev_status, _)) = editor.get_status() {
+                            format!("{} ", prev_status)
+                        } else {
+                            String::new()
+                        },
                         nr_of_files,
                         if nr_of_files == 1 { "" } else { "s" } // avoid "Loaded 1 files." grammo
                     ));
@@ -423,13 +436,14 @@ impl Application {
 
     fn refresh_config(&mut self) {
         let mut refresh_config = || -> Result<(), Error> {
-            let default_config = Config::load_default()
-                .map_err(|err| anyhow::anyhow!("Failed to load config: {}", err))?;
+            let (default_config, workspace_trust) =
+                Config::load_default(Some(self.editor.workspace_trust.clone()))
+                    .map_err(|err| anyhow::anyhow!("Failed to load config: {}", err))?;
 
             // Update the syntax language loader before setting the theme. Setting the theme will
             // call `Loader::set_scopes` which must be done before the documents are re-parsed for
             // the sake of locals highlighting.
-            let lang_loader = helix_core::config::user_lang_loader(default_config.editor.insecure)?;
+            let lang_loader = helix_core::config::user_lang_loader(&workspace_trust)?;
             self.editor.syn_loader.store(Arc::new(lang_loader));
             Self::load_configured_theme(
                 &mut self.editor,
@@ -437,6 +451,8 @@ impl Application {
                 &mut self.terminal,
                 self.theme_mode,
             );
+
+            self.editor.workspace_trust = workspace_trust;
 
             // Re-parse any open documents with the new language config.
             let lang_loader = self.editor.syn_loader.load();

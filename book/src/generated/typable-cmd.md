@@ -97,6 +97,8 @@
 | `:read`, `:r` | Load a file into buffer |
 | `:echo` | Prints the given arguments to the statusline. |
 | `:noop` | Does nothing. |
-| `:workspace-trust` | Add current workspace to the list of trusted workspaces. |
-| `:workspace-untrust` | Remove current workspace from the list of trusted workspaces. |
+| `:workspace-trust` | Trust current workspace permanently. |
+| `:workspace-untrust` | Untrust current workspace without excluding it. |
+| `:workspace-exclude` | Untrust current workspace and exclude it. |
+| `:workspace-trust-once` | Trust current workspace only until restart. |
 | `:set-max-width` | Set the maximum width of the editor, or swap between 2 widths. If set to 0 it will take up the entire width. |

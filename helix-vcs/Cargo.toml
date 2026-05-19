@@ -13,6 +13,7 @@ homepage.workspace = true
 helix-core = { path = "../helix-core" }
 helix-event = { path = "../helix-event" }
 helix-stdx = { path = "../helix-stdx" }
+helix-loader = { path = "../helix-loader" }
 
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "time", "sync", "parking_lot", "macros"] }
 parking_lot.workspace = true

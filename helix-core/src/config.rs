@@ -1,3 +1,5 @@
+use helix_loader::workspace_trust::WorkspaceTrust;
+
 use crate::{
     auto_pairs::{AutoPairsRegistry, AutoPairsRegistryError},
     syntax::{
@@ -47,8 +49,8 @@ impl std::fmt::Display for LanguageLoaderError {
 impl std::error::Error for LanguageLoaderError {}
 
 /// Language configuration based on user configured languages.toml.
-pub fn user_lang_config(insecure: bool) -> Result<Configuration, toml::de::Error> {
-    helix_loader::config::user_lang_config(insecure)?.try_into()
+pub fn user_lang_config(wst: &WorkspaceTrust) -> Result<Configuration, toml::de::Error> {
+    helix_loader::config::user_lang_config(wst)?.try_into()
 }
 
 /// Load the auto-pairs registry from auto-pairs.toml.
@@ -59,8 +61,8 @@ pub fn auto_pairs_registry() -> Result<AutoPairsRegistry, LanguageLoaderError> {
 }
 
 /// Language configuration loader based on user configured languages.toml.
-pub fn user_lang_loader(insecure: bool) -> Result<Loader, LanguageLoaderError> {
-    let config_val = helix_loader::config::user_lang_config(insecure)
+pub fn user_lang_loader(wst: &WorkspaceTrust) -> Result<Loader, LanguageLoaderError> {
+    let config_val = helix_loader::config::user_lang_config(wst)
         .map_err(LanguageLoaderError::DeserializeError)?;
     let config = config_val.clone().try_into().map_err(|e| {
         if let Some(languages) = config_val.get("language").and_then(|v| v.as_array()) {

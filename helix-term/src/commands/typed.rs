@@ -1551,9 +1551,10 @@ fn reload(cx: &mut compositor::Context, _args: Args, event: PromptEvent) -> anyh
 
     let scrolloff = cx.editor.config().scrolloff;
     let (view, doc) = current!(cx.editor);
-    doc.reload(view, &cx.editor.diff_providers).map(|_| {
-        view.ensure_cursor_in_view(doc, scrolloff);
-    })?;
+    doc.reload(view, &cx.editor.diff_providers, &cx.editor.workspace_trust)
+        .map(|_| {
+            view.ensure_cursor_in_view(doc, scrolloff);
+        })?;
     if let Some(path) = doc.path().map(ToOwned::to_owned) {
         if !cx.editor.file_watcher.is_watching(&path) {
             cx.editor
@@ -1597,7 +1598,8 @@ fn reload_all(cx: &mut compositor::Context, _args: Args, event: PromptEvent) -> 
         // Ensure that the view is synced with the document's history.
         view.sync_changes(doc);
 
-        if let Err(error) = doc.reload(view, &cx.editor.diff_providers) {
+        if let Err(error) = doc.reload(view, &cx.editor.diff_providers, &cx.editor.workspace_trust)
+        {
             cx.editor.set_error(format!("{}", error));
             continue;
         }
@@ -4034,7 +4036,7 @@ pub const TYPABLE_COMMAND_LIST: &[TypableCommand] = &[
     TypableCommand {
         name: "workspace-trust",
         aliases: &[],
-        doc: "Add current workspace to the list of trusted workspaces.",
+        doc: "Trust current workspace permanently.",
         fun: trust_workspace,
         completer: CommandCompleter::none(),
         signature: Signature { positionals: (0, None), ..Signature::DEFAULT },
@@ -4042,8 +4044,24 @@ pub const TYPABLE_COMMAND_LIST: &[TypableCommand] = &[
     TypableCommand {
         name: "workspace-untrust",
         aliases: &[],
-        doc: "Remove current workspace from the list of trusted workspaces.",
+        doc: "Untrust current workspace without excluding it.",
         fun: untrust_workspace,
+        completer: CommandCompleter::none(),
+        signature: Signature { positionals: (0, None), ..Signature::DEFAULT },
+    },
+    TypableCommand {
+        name: "workspace-exclude",
+        aliases: &[],
+        doc: "Untrust current workspace and exclude it.",
+        fun: exclude_workspace,
+        completer: CommandCompleter::none(),
+        signature: Signature { positionals: (0, None), ..Signature::DEFAULT },
+    },
+    TypableCommand {
+        name: "workspace-trust-once",
+        aliases: &[],
+        doc: "Trust current workspace only until restart.",
+        fun: trust_workspace_once,
         completer: CommandCompleter::none(),
         signature: Signature { positionals: (0, None), ..Signature::DEFAULT },
     }
@@ -4486,7 +4504,24 @@ fn trust_workspace(
         return Ok(());
     }
 
-    helix_loader::workspace_trust::WorkspaceTrust::load(false).trust_workspace();
+    cx.editor.workspace_trust.trust_workspace();
+
+    cx.editor.config_events.0.send(ConfigEvent::Refresh)?;
+    // HACK
+    lsp_restart(cx, args, event)
+}
+
+fn trust_workspace_once(
+    cx: &mut compositor::Context,
+    args: Args<'_>,
+    event: PromptEvent,
+) -> anyhow::Result<()> {
+    if event != PromptEvent::Validate {
+        return Ok(());
+    }
+
+    cx.editor.workspace_trust.untrust_workspace();
+    cx.editor.workspace_trust.cache_trust_in_current_workspace();
 
     cx.editor.config_events.0.send(ConfigEvent::Refresh)?;
     // HACK
@@ -4494,7 +4529,7 @@ fn trust_workspace(
 }
 
 fn untrust_workspace(
-    _cx: &mut compositor::Context,
+    cx: &mut compositor::Context,
     _args: Args<'_>,
     event: PromptEvent,
 ) -> anyhow::Result<()> {
@@ -4502,6 +4537,19 @@ fn untrust_workspace(
         return Ok(());
     }
 
-    helix_loader::workspace_trust::WorkspaceTrust::load(false).untrust_workspace();
+    cx.editor.workspace_trust.untrust_workspace();
+    Ok(())
+}
+
+fn exclude_workspace(
+    cx: &mut compositor::Context,
+    _args: Args<'_>,
+    event: PromptEvent,
+) -> anyhow::Result<()> {
+    if event != PromptEvent::Validate {
+        return Ok(());
+    }
+
+    cx.editor.workspace_trust.exclude_workspace();
     Ok(())
 }
