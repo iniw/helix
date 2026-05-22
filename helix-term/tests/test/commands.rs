@@ -339,6 +339,14 @@ async fn test_reflow_preserves_saved_jump_selection() -> anyhow::Result<()> {
 
     Ok(())
 }
+#[tokio::test(flavor = "multi_thread")]
+async fn test_undo_redo_selection() -> anyhow::Result<()> {
+    test(("#[a|]#bc", "ll<A-k>", "a#[b|]#c")).await?;
+    test(("#[a|]#bc", "ll<A-k><A-w>", "ab#[c|]#")).await?;
+    test(("#[a|]#bc", "ll2<A-k>", "#[a|]#bc")).await?;
+
+    Ok(())
+}
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_extend_line() -> anyhow::Result<()> {
