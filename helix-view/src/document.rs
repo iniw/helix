@@ -157,6 +157,7 @@ pub struct Document {
     pub(crate) id: DocumentId,
     text: Rope,
     selections: HashMap<ViewId, Selection>,
+    selection_histories: HashMap<ViewId, SelectionHistory>,
     view_data: HashMap<ViewId, ViewData>,
     pub active_snippet: Option<ActiveSnippet>,
     /// Current search information.
@@ -343,6 +344,45 @@ impl From<&ThinDocumentSymbol> for Crumb {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum SelectionHistoryDirection {
+    Backward(usize),
+    Forward(usize),
+}
+
+#[derive(Debug, Default)]
+struct SelectionHistory {
+    selections: Vec<Selection>,
+    current: usize,
+}
+
+impl SelectionHistory {
+    fn push(&mut self, selection: Selection) {
+        if self.selections.get(self.current) == Some(&selection) {
+            return;
+        }
+
+        self.selections.truncate(self.current + 1);
+        self.selections.push(selection);
+        self.current = self.selections.len() - 1;
+    }
+
+    fn select(&mut self, direction: SelectionHistoryDirection) -> Option<&Selection> {
+        let max = self.selections.len().checked_sub(1)?;
+        let position = match direction {
+            SelectionHistoryDirection::Backward(count) => self.current.checked_sub(count)?,
+            SelectionHistoryDirection::Forward(count) => self.current.checked_add(count)?.min(max),
+        };
+
+        if position == self.current {
+            return None;
+        }
+
+        self.current = position;
+        self.selections.get(self.current)
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct DocumentColorSwatches {
     pub color_swatches: Vec<InlineAnnotation>,
@@ -439,6 +479,7 @@ impl fmt::Debug for Document {
             .field("id", &self.id)
             .field("text", &self.text)
             .field("selections", &self.selections)
+            .field("selection_histories", &self.selection_histories)
             .field("inlay_hints_oudated", &self.inlay_hints_oudated)
             .field("text_annotations", &self.inlay_hints)
             .field("view_data", &self.view_data)
@@ -847,6 +888,7 @@ impl Document {
             has_bom,
             text,
             selections: HashMap::default(),
+            selection_histories: HashMap::default(),
             inlay_hints: HashMap::default(),
             last_search_match: HashMap::default(),
             inlay_hints_oudated: false,
@@ -1508,13 +1550,18 @@ impl Document {
         Ok(())
     }
 
-    /// Select text within the [`Document`].
-    pub fn set_selection(&mut self, view_id: ViewId, selection: Selection) {
+    fn select(&mut self, view_id: ViewId, selection: Selection, save_to_history: bool) {
         self.last_search_match.remove(&view_id);
 
         // TODO: use a transaction?
-        self.selections
-            .insert(view_id, selection.ensure_invariants(self.text().slice(..)));
+        let selection = selection.ensure_invariants(self.text().slice(..));
+        if save_to_history {
+            self.selection_histories
+                .entry(view_id)
+                .or_default()
+                .push(selection.clone());
+        }
+        self.selections.insert(view_id, selection);
         helix_event::dispatch(SelectionDidChange {
             doc: self,
             view: view_id,
@@ -1527,6 +1574,29 @@ impl Document {
 
     pub fn get_last_search_match(&self, view_id: ViewId) -> Option<SearchMatch> {
         self.last_search_match.get(&view_id).copied()
+    }
+
+    /// Select text within the [`Document`].
+    pub fn set_selection(&mut self, view_id: ViewId, selection: Selection) {
+        self.select(view_id, selection, true);
+    }
+
+    pub fn select_from_history(
+        &mut self,
+        view_id: ViewId,
+        direction: SelectionHistoryDirection,
+    ) -> bool {
+        let selection = self
+            .selection_histories
+            .get_mut(&view_id)
+            .and_then(|history| history.select(direction).cloned());
+
+        if let Some(selection) = selection {
+            self.select(view_id, selection, false);
+            true
+        } else {
+            false
+        }
     }
 
     /// Find the origin selection of the text in a document, i.e. where
@@ -1569,6 +1639,7 @@ impl Document {
     /// Remove any views' data and state that is stored in the `Document`.
     pub fn remove_view(&mut self, view_id: ViewId) {
         self.selections.remove(&view_id);
+        self.selection_histories.remove(&view_id);
         self.view_data.remove(&view_id);
         self.inlay_hints.remove(&view_id);
         self.jump_labels.remove(&view_id);
@@ -1596,14 +1667,7 @@ impl Document {
 
         if changes.is_empty() {
             if let Some(selection) = transaction.selection() {
-                self.selections.insert(
-                    view_id,
-                    selection.clone().ensure_invariants(self.text.slice(..)),
-                );
-                helix_event::dispatch(SelectionDidChange {
-                    doc: self,
-                    view: view_id,
-                });
+                self.select(view_id, selection.clone(), emit_lsp_notification);
             }
             return true;
         }
@@ -1760,14 +1824,16 @@ impl Document {
 
         // if specified, the current selection should instead be replaced by transaction.selection
         if let Some(selection) = transaction.selection() {
-            self.selections.insert(
-                view_id,
-                selection.clone().ensure_invariants(self.text.slice(..)),
-            );
-            helix_event::dispatch(SelectionDidChange {
-                doc: self,
-                view: view_id,
-            });
+            self.select(view_id, selection.clone(), false);
+        }
+
+        if emit_lsp_notification {
+            self.selection_histories.clear();
+            let selection = self.selection(view_id).clone();
+            self.selection_histories
+                .entry(view_id)
+                .or_default()
+                .push(selection);
         }
 
         true
