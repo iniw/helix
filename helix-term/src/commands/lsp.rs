@@ -38,7 +38,7 @@ use std::{
     fmt::Display,
     future::Future,
     path::Path,
-sync::Arc,
+    sync::Arc,
 };
 
 /// Gets the first language server that is attached to a document which supports a specific feature.
