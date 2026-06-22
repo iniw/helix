@@ -158,7 +158,7 @@ where
         helix_view::editor::StatusLineElement::Register => render_register,
         helix_view::editor::StatusLineElement::CurrentWorkingDirectory => render_cwd,
         helix_view::editor::StatusLineElement::CodeActionHint => render_code_action_hint,
-        helix_view::editor::StatusLineElement::Zoom => render_zoom,    
+        helix_view::editor::StatusLineElement::Zoom => render_zoom,
         helix_view::editor::StatusLineElement::SearchPosition => render_search_position,
     }
 }
@@ -624,11 +624,21 @@ where
     write(context, cwd.into())
 }
 
-(??)
+fn render_code_action_hint<'a, F>(context: &mut RenderContext<'a>, write: F)
 where
     F: Fn(&mut RenderContext<'a>, Span<'a>) + Copy,
 {
-(??)
+    if context.doc.code_action_hints(context.view.id) {
+        write(context, "💡".into());
+    }
+}
+
+fn render_zoom<'a, F>(context: &mut RenderContext<'a>, write: F)
+where
+    F: Fn(&mut RenderContext<'a>, Span<'a>) + Copy,
+{
+    if context.editor.tree.zoom {
+        write(context, " zoom ".into());
     }
 }
 
