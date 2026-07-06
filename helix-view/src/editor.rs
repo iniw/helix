@@ -1362,6 +1362,10 @@ use futures_util::stream::{Flatten, Once};
 
 type Diagnostics = BTreeMap<Uri, Vec<(lsp::Diagnostic, DiagnosticProvider)>>;
 
+// Workspace diagnostics need to be keyed by LSP ID and URI because result IDs
+// used for deduplication are per-document.
+type WorkspaceDiagnosticIds = BTreeMap<(LanguageServerId, Uri), String>;
+
 pub struct Editor {
     /// Current editing mode.
     pub mode: Mode,
@@ -1382,6 +1386,7 @@ pub struct Editor {
     pub macro_replaying: Vec<char>,
     pub language_servers: helix_lsp::Registry,
     pub diagnostics: Diagnostics,
+    pub workspace_diagnostic_ids: WorkspaceDiagnosticIds,
     pub diff_providers: DiffProviderRegistry,
 
     pub debug_adapters: dap::registry::Registry,
@@ -1542,6 +1547,7 @@ impl Editor {
             theme: theme_loader.default(),
             language_servers,
             diagnostics: Diagnostics::new(),
+            workspace_diagnostic_ids: WorkspaceDiagnosticIds::new(),
             diff_providers,
             debug_adapters: dap::registry::Registry::new(),
             breakpoints: HashMap::new(),
