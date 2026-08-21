@@ -767,7 +767,8 @@ fn code_action_on_save_step(
             let mut responses = Vec::with_capacity(requests.len());
             for (request, ls_id) in requests {
                 match request.await {
-                    Ok(actions) => responses.push((ls_id, actions)),
+                    Ok(Some(actions)) => responses.push((ls_id, actions)),
+                    Ok(None) => {}
                     Err(err) => {
                         log::error!("code-actions-on-save: request failed: {err:?}");
                     }
@@ -823,7 +824,7 @@ fn resolve_and_apply_code_actions_of_kind(
     kind: CodeActionKind,
     kinds: VecDeque<CodeActionKind>,
     tail: Option<Job>,
-    responses: Vec<(LanguageServerId, Option<Vec<CodeActionOrCommand>>)>,
+    responses: Vec<(LanguageServerId, Vec<CodeActionOrCommand>)>,
 ) -> Option<Job> {
     if editor
         .documents
@@ -838,9 +839,6 @@ fn resolve_and_apply_code_actions_of_kind(
     // those each server left incomplete.
     let mut steps = Vec::new();
     for (ls_id, actions) in responses {
-        let Some(actions) = actions else {
-            continue;
-        };
         let Some(ls) = editor.language_server_by_id(ls_id) else {
             continue;
         };
