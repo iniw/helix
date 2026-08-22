@@ -386,6 +386,29 @@ impl Editor {
             }
         });
     }
+
+    pub fn stop_language_server_by_id(&mut self, server_id: LanguageServerId) {
+        self.language_servers.stop(server_id);
+        self.clear_language_server_state(server_id);
+    }
+
+    pub fn remove_language_server_by_id(&mut self, server_id: LanguageServerId) {
+        let language_server = self.language_servers.get_by_id(server_id).cloned();
+        self.language_servers.remove_by_id(server_id);
+        if let Some(language_server) = language_server {
+            language_server.force_shutdown();
+        }
+        self.clear_language_server_state(server_id);
+    }
+
+    fn clear_language_server_state(&mut self, server_id: LanguageServerId) {
+        self.diagnostics.retain(|_, diags| {
+            diags.retain(|(_, provider)| provider.language_server_id() != Some(server_id));
+            !diags.is_empty()
+        });
+        self.workspace_diagnostic_ids
+            .retain(|(diagnostic_server_id, _), _| *diagnostic_server_id != server_id);
+    }
 }
 
 pub fn register_hooks(_handlers: &Handlers) {
@@ -429,6 +452,17 @@ pub fn register_hooks(_handlers: &Handlers) {
         // Send textDocument/didClose notifications.
         for language_server in event.doc.language_servers() {
             language_server.text_document_did_close(event.doc.identifier());
+
+            // Stop the language server if this was the last open document using it.
+            if event
+                .editor
+                .documents()
+                .all(|d| !d.supports_language_server(language_server.id()))
+            {
+                event
+                    .editor
+                    .remove_language_server_by_id(language_server.id());
+            };
         }
 
         Ok(())

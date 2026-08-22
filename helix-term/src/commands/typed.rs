@@ -10,6 +10,7 @@ use helix_core::command_line::{Args, Flag, Signature, Token, TokenKind};
 use helix_core::fuzzy::fuzzy_match;
 use helix_core::indent::MAX_INDENT;
 use helix_core::line_ending;
+use helix_lsp::LanguageServerId;
 use helix_stdx::path::home_dir;
 use helix_view::document::{read_to_string, DEFAULT_LANGUAGE_NAME};
 use helix_view::editor::{CloseError, ConfigEvent};
@@ -1808,38 +1809,40 @@ fn lsp_restart(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> 
         return Ok(());
     }
 
+    let selected = {
+        let doc = doc!(cx.editor);
+        let config = doc
+            .language_config()
+            .context("LSP not defined for the current document")?;
+        lsp_helper_filter_from_args(
+            config.language_servers.iter().map(|ls| ls.name.as_str()),
+            &args,
+        )?
+    };
+
+    // Stop existing LSPs to ensure their diagnostics are correctly cleared
+    let running = {
+        let doc = doc!(cx.editor);
+        doc.language_servers()
+            .filter(|ls| selected.iter().any(|name| **name == *ls.name()))
+            .map(|ls| (ls.id(), Box::from(ls.name())))
+            .collect::<Vec<_>>()
+    };
+    lsp_stop_inner(cx.editor, &running)?;
+
     let editor_config = cx.editor.config.load();
     let doc = doc!(cx.editor);
     let config = doc
         .language_config()
         .context("LSP not defined for the current document")?;
 
-    let language_servers: Vec<_> = config
-        .language_servers
-        .iter()
-        .map(|ls| ls.name.as_str())
-        .collect();
-    let language_servers = if args.is_empty() {
-        language_servers
-    } else {
-        let (valid, invalid): (Vec<_>, Vec<_>) = args
-            .iter()
-            .map(|arg| arg.as_ref())
-            .partition(|name| language_servers.contains(name));
-        if !invalid.is_empty() {
-            let s = if invalid.len() == 1 { "" } else { "s" };
-            bail!("Unknown language server{s}: {}", invalid.join(", "));
-        }
-        valid
-    };
-
     let mut errors = Vec::new();
-    for server in language_servers.iter() {
+    for name in &selected {
         match cx
             .editor
             .language_servers
             .restart_server(
-                server,
+                name,
                 config,
                 doc.path(),
                 &editor_config.workspace_lsp_roots,
@@ -1850,7 +1853,7 @@ fn lsp_restart(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> 
             // Ignore the executable-not-found error unless the server was explicitly requested
             // in the arguments.
             Err(helix_lsp::Error::ExecutableNotFound(_))
-                if !args.iter().any(|arg| arg == server) => {}
+                if !args.iter().any(|arg| **arg == **name) => {}
             Err(err) => errors.push(err.to_string()),
             _ => (),
         }
@@ -1863,9 +1866,9 @@ fn lsp_restart(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> 
         .filter_map(|doc| match doc.language_config() {
             Some(config)
                 if config.language_servers.iter().any(|ls| {
-                    language_servers
+                    selected
                         .iter()
-                        .any(|restarted_ls| restarted_ls == &ls.name)
+                        .any(|restarted_ls| **restarted_ls == *ls.name)
                 }) =>
             {
                 Some(doc.id())
@@ -1892,30 +1895,30 @@ fn lsp_stop(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> any
     if event != PromptEvent::Validate {
         return Ok(());
     }
-    let doc = doc!(cx.editor);
 
-    let language_servers: Vec<_> = doc
-        .language_servers()
-        .map(|ls| ls.name().to_string())
-        .collect();
-    let language_servers = if args.is_empty() {
-        language_servers
-    } else {
-        let (valid, invalid): (Vec<_>, Vec<_>) = args
-            .iter()
-            .map(|arg| arg.to_string())
-            .partition(|name| language_servers.contains(name));
-        if !invalid.is_empty() {
-            let s = if invalid.len() == 1 { "" } else { "s" };
-            bail!("Unknown language server{s}: {}", invalid.join(", "));
-        }
-        valid
+    let selected = {
+        let doc = doc!(cx.editor);
+        let names = lsp_helper_filter_from_args(doc.language_servers().map(|ls| ls.name()), &args)?;
+        names
+            .into_iter()
+            .filter_map(|name| {
+                doc.language_servers()
+                    .find(|ls| name.as_ref() == ls.name())
+                    .map(|ls| (ls.id(), name))
+            })
+            .collect::<Vec<_>>()
     };
+    lsp_stop_inner(cx.editor, &selected)
+}
 
-    for ls_name in &language_servers {
-        cx.editor.language_servers.stop(ls_name);
+fn lsp_stop_inner(
+    editor: &mut Editor,
+    selected: &[(LanguageServerId, Box<str>)],
+) -> anyhow::Result<()> {
+    for (ls_id, ls_name) in selected {
+        editor.stop_language_server_by_id(*ls_id);
 
-        for doc in cx.editor.documents_mut() {
+        for doc in editor.documents_mut() {
             if let Some(client) = doc.remove_language_server_by_name(ls_name) {
                 doc.clear_diagnostics_for_language_server(client.id());
                 doc.reset_all_inlay_hints();
@@ -1925,6 +1928,33 @@ fn lsp_stop(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> any
     }
 
     Ok(())
+}
+
+fn lsp_helper_filter_from_args<'a>(
+    language_servers: impl IntoIterator<Item = &'a str>,
+    args: &Args,
+) -> anyhow::Result<Vec<Box<str>>> {
+    let language_servers: Vec<_> = language_servers.into_iter().collect();
+
+    let mut selected = Vec::new();
+    let mut invalid = Vec::new();
+    if args.positionals().is_empty() {
+        selected = language_servers.into_iter().map(Box::from).collect();
+    } else {
+        for arg in args.positionals() {
+            match language_servers.iter().find(|name| arg.as_ref() == **name) {
+                Some(name) => selected.push(Box::from(*name)),
+                None => invalid.push(arg.as_ref()),
+            }
+        }
+    }
+
+    if !invalid.is_empty() {
+        let s = if invalid.len() == 1 { "" } else { "s" };
+        bail!("Unknown language server{s}: {}", invalid.join(", "));
+    }
+
+    Ok(selected)
 }
 
 fn tree_sitter_scopes(
